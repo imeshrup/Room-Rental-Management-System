@@ -202,7 +202,7 @@ export default function App() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard 
             title="Total Income" 
-            value={`LKR ${stats?.totalIncome.toLocaleString()}`} 
+            value={`LKR ${stats?.totalIncome?.toLocaleString() ?? '0'}`} 
             icon={<TrendingUp className="text-emerald-500" />} 
             trend="+12% from last month"
           />
@@ -833,7 +833,7 @@ export default function App() {
                           <tr key={r.id} className="hover:bg-slate-50/50">
                             <td className="p-4 font-medium">{r.boarder_name}</td>
                             <td className="p-4 text-sm text-slate-600">{r.message}</td>
-                            <td className="p-4 text-slate-400 text-sm">{new Date(r.sent_at).toLocaleString()}</td>
+                            <td className="p-4 text-slate-400 text-sm">{r.sent_at ? new Date(r.sent_at).toLocaleString() : 'N/A'}</td>
                           </tr>
                         ))
                       )}
@@ -856,7 +856,7 @@ export default function App() {
                       ).sort().reverse().slice(0, 6).map(([month, total]: any) => (
                         <div key={month} className="flex justify-between items-center">
                           <span className="text-sm font-medium text-slate-600">{month}</span>
-                          <span className="font-bold text-slate-900">LKR {total.toLocaleString()}</span>
+                          <span className="font-bold text-slate-900">LKR {total?.toLocaleString() ?? '0'}</span>
                         </div>
                       ))}
                     </div>
@@ -918,7 +918,7 @@ export default function App() {
                               <p className="font-medium text-slate-800">
                                 <span className="font-bold">{log.action}</span> {log.entity_type}
                               </p>
-                              <span className="text-xs text-slate-400">{new Date(log.timestamp).toLocaleString()}</span>
+                              <span className="text-xs text-slate-400">{log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}</span>
                             </div>
                             <p className="text-sm text-slate-600 mt-1">{log.details}</p>
                           </div>
