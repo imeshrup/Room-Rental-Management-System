@@ -1,0 +1,5 @@
+{
+  "name": "Boarding House Manager",
+  "description": "A comprehensive management system for boarding house complexes, tracking rooms, tenants, payments, and floor-wise availability.",
+  "requestFramePermissions": []
+}
