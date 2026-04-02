@@ -18,12 +18,17 @@ import {
   Trash2,
   LogOut,
   Bell,
+  Plus,
   History,
   Wrench,
   HelpCircle,
   AlertTriangle,
   CheckCircle2,
-  Clock
+  Clock,
+  Eye,
+  EyeOff,
+  Settings,
+  User as UserIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -97,8 +102,22 @@ interface MaintenanceRequest {
   created_at: string;
 }
 
+interface User {
+  id: number;
+  username: string;
+  role: string;
+  boarder_id?: number;
+}
+
 export default function App() {
+  const [user, setUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('boarding_user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
+  const [passwordStatus, setPasswordStatus] = useState({ type: '', message: '' });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -107,6 +126,7 @@ export default function App() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceRequest[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -118,25 +138,68 @@ export default function App() {
   const [editingBoarder, setEditingBoarder] = useState<Boarder | null>(null);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [showAddMaintenance, setShowAddMaintenance] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [roomFilter, setRoomFilter] = useState({ floor: 'All', type: 'All', status: 'All' });
   const [boarderFilter, setBoarderFilter] = useState('All'); // 'All', 'Active', 'Inactive'
 
   useEffect(() => {
-    fetchData();
-  }, [activeTab]);
+    if (user) {
+      fetchData();
+    }
+  }, [activeTab, user]);
+
+  const handleLogin = (userData: User) => {
+    setUser(userData);
+    localStorage.setItem('boarding_user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('boarding_user');
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordData.new !== passwordData.confirm) {
+      setPasswordStatus({ type: 'error', message: 'New passwords do not match' });
+      return;
+    }
+    try {
+      const res = await fetch('/api/users/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          currentPassword: passwordData.current,
+          newPassword: passwordData.new
+        })
+      });
+      if (res.ok) {
+        setPasswordStatus({ type: 'success', message: 'Password updated successfully!' });
+        setPasswordData({ current: '', new: '', confirm: '' });
+        setTimeout(() => setShowChangePassword(false), 2000);
+      } else {
+        const data = await res.json();
+        setPasswordStatus({ type: 'error', message: data.error || 'Failed to update password' });
+      }
+    } catch (err) {
+      setPasswordStatus({ type: 'error', message: 'Network error' });
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [statsRes, roomsRes, boardersRes, paymentsRes, remindersRes, logsRes, maintenanceRes] = await Promise.all([
+      const [statsRes, roomsRes, boardersRes, paymentsRes, remindersRes, logsRes, maintenanceRes, usersRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/rooms'),
         fetch('/api/boarders'),
         fetch('/api/payments'),
         fetch('/api/reminders'),
         fetch('/api/audit-logs'),
-        fetch('/api/maintenance')
+        fetch('/api/maintenance'),
+        fetch('/api/users')
       ]);
       
       setStats(await statsRes.json());
@@ -146,6 +209,7 @@ export default function App() {
       setReminders(await remindersRes.json());
       setAuditLogs(await logsRes.json());
       setMaintenance(await maintenanceRes.json());
+      setUsers(await usersRes.json());
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -189,6 +253,81 @@ export default function App() {
 
   const renderDashboard = () => {
     const currentMonth = new Date().toISOString().substring(0, 7);
+    
+    if (user?.role === 'boarder') {
+      const myBoarder = boarders.find(b => b.id === user.boarder_id);
+      const myPayments = payments.filter(p => p.boarder_name === myBoarder?.name);
+      const isPaid = myPayments.some(p => p.month === currentMonth && p.type === 'rent');
+      const myRoom = rooms.find(r => r.room_number === myBoarder?.room_number);
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 rounded-3xl text-white shadow-xl">
+            <h2 className="text-3xl font-black mb-2">Welcome, {myBoarder?.name}!</h2>
+            <p className="text-blue-100 font-medium">Here is your current boarding status.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4">
+                <Home className="text-blue-600" size={24} />
+              </div>
+              <h3 className="text-slate-500 text-sm font-bold uppercase mb-1">Your Room</h3>
+              <p className="text-2xl font-black text-slate-800">{myRoom ? `Room ${myRoom.room_number}` : 'Not Assigned'}</p>
+              <p className="text-xs text-slate-400 mt-1">{myRoom ? `${myRoom.type} • ${myRoom.floor} Floor` : 'Contact admin'}</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${isPaid ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                <CreditCard className={isPaid ? 'text-emerald-600' : 'text-red-600'} size={24} />
+              </div>
+              <h3 className="text-slate-500 text-sm font-bold uppercase mb-1">Rent Status</h3>
+              <p className={`text-2xl font-black ${isPaid ? 'text-emerald-600' : 'text-red-600'}`}>
+                {isPaid ? 'Paid' : 'Due'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">{currentMonth}</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mb-4">
+                <TrendingUp className="text-purple-600" size={24} />
+              </div>
+              <h3 className="text-slate-500 text-sm font-bold uppercase mb-1">Monthly Rent</h3>
+              <p className="text-2xl font-black text-slate-800">LKR {myRoom?.price?.toLocaleString() || '0'}</p>
+              <p className="text-xs text-slate-400 mt-1">Fixed monthly rate</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 className="text-lg font-bold text-slate-800 mb-6">Your Recent Payments</h3>
+            <div className="space-y-4">
+              {myPayments.length === 0 ? (
+                <p className="text-center py-8 text-slate-400">No payment history found.</p>
+              ) : (
+                myPayments.slice(0, 5).map(payment => (
+                  <div key={payment.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                        <CreditCard className="text-blue-500" size={18} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-800 capitalize">{payment.type} Payment</p>
+                        <p className="text-xs text-slate-400">{payment.payment_date}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-slate-800">LKR {payment.amount.toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">{payment.month}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const activeBoardersList = boarders.filter(b => !!b.rental_id);
     const paidBoarders = activeBoardersList.filter(b => 
       payments.some(p => p.boarder_name === b.name && p.month === currentMonth && p.type === 'rent')
@@ -200,12 +339,14 @@ export default function App() {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard 
-            title="Total Income" 
-            value={`LKR ${stats?.totalIncome?.toLocaleString() ?? '0'}`} 
-            icon={<TrendingUp className="text-emerald-500" />} 
-            trend="+12% from last month"
-          />
+          {user?.role === 'admin' && (
+            <StatCard 
+              title="Total Income" 
+              value={`LKR ${stats?.totalIncome?.toLocaleString() ?? '0'}`} 
+              icon={<TrendingUp className="text-emerald-500" />} 
+              trend="+12% from last month"
+            />
+          )}
           <StatCard 
             title="Occupancy Rate" 
             value={`${stats ? Math.round((stats.occupiedRooms / stats.totalRooms) * 100) : 0}%`} 
@@ -230,7 +371,9 @@ export default function App() {
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
             <h3 className="text-lg font-semibold mb-4 flex items-center justify-between">
               <span>Recent Payments</span>
-              <button onClick={() => setActiveTab('payments')} className="text-xs text-blue-600 hover:underline">View All</button>
+              {user?.role === 'admin' && (
+                <button onClick={() => setActiveTab('payments')} className="text-xs text-blue-600 hover:underline">View All</button>
+              )}
             </h3>
             <div className="space-y-4">
               {payments.slice(0, 5).map((payment) => (
@@ -328,7 +471,90 @@ export default function App() {
     );
   };
 
+  const renderUsers = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">User Accounts</h2>
+            <p className="text-slate-500 text-sm">Manage system access for staff and boarders</p>
+          </div>
+          <button 
+            onClick={() => setShowAddUser(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
+          >
+            <Plus size={20} />
+            Add Staff/Admin
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Username</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Role</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Linked Entity</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="p-8 text-center text-slate-400">No user accounts found.</td>
+                </tr>
+              ) : (
+                users.map(u => (
+                  <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4 font-medium text-slate-800">{u.username}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                        u.role === 'admin' ? 'bg-purple-100 text-purple-600' :
+                        u.role === 'staff' ? 'bg-blue-100 text-blue-600' :
+                        'bg-emerald-100 text-emerald-600'
+                      }`}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="p-4 text-sm text-slate-600">
+                      {u.boarder_name ? `Boarder: ${u.boarder_name}` : 'System User'}
+                    </td>
+                    <td className="p-4">
+                      {u.username !== 'admin' && (
+                        <button 
+                          onClick={async () => {
+                            if (confirm(`Delete user account for ${u.username}?`)) {
+                              try {
+                                const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' });
+                                if (res.ok) {
+                                  fetchData();
+                                } else {
+                                  const data = await res.json();
+                                  alert(data.error || 'Failed to delete user');
+                                }
+                              } catch (err) {
+                                alert('Network error');
+                              }
+                            }
+                          }}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   const renderRooms = () => {
+    if (user?.role === 'boarder') return null;
     const floors = ['Ground', '2nd', '3rd'];
     const filteredRooms = rooms.filter(r => {
       const floorMatch = roomFilter.floor === 'All' || r.floor === roomFilter.floor;
@@ -415,16 +641,18 @@ export default function App() {
                         }`}>
                           {room.status === 'occupied' ? 'Full' : room.current_occupancy > 0 ? 'Partial' : 'Available'}
                         </span>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingRoom(room);
-                            setShowEditRoom(true);
-                          }}
-                          className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        >
-                          <Edit size={12} />
-                        </button>
+                        {user?.role === 'admin' && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingRoom(room);
+                              setShowEditRoom(true);
+                            }}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            <Edit size={12} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <p className="text-xs text-slate-500 mb-1 capitalize">{room.type} Room ({room.current_occupancy}/{room.capacity})</p>
@@ -440,6 +668,7 @@ export default function App() {
   };
 
   const renderBoarders = () => {
+    if (user?.role === 'boarder') return null;
     const filteredBoarders = boarders.filter(b => {
       const statusMatch = boarderFilter === 'All' || 
                          (boarderFilter === 'Active' ? !!b.rental_id : !b.rental_id);
@@ -484,6 +713,7 @@ export default function App() {
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase">Contact</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase">Workplace</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase">Emergency</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Login Info</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase">Payment Status</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase">Actions</th>
               </tr>
@@ -518,6 +748,10 @@ export default function App() {
                   <div className="text-xs text-slate-400">{boarder.emergency_contact_phone}</div>
                 </td>
                 <td className="p-4">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">User: {boarder.name.toLowerCase().replace(/\s+/g, '')}</div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Pass: {boarder.contact_number}</div>
+                </td>
+                <td className="p-4">
                   {boarder.rental_id ? (
                     (() => {
                       const currentMonth = new Date().toISOString().substring(0, 7);
@@ -545,26 +779,28 @@ export default function App() {
                     >
                       <Edit size={16} />
                     </button>
-                    <button 
-                      onClick={async () => {
-                        if (confirm('Are you sure you want to delete this boarder? This will remove all their history.')) {
-                          try {
-                            const res = await fetch(`/api/boarders/${boarder.id}`, { method: 'DELETE' });
-                            if (!res.ok) {
-                              const err = await res.json();
-                              alert(err.error || 'Failed to delete boarder. They might have rental history.');
-                            } else {
-                              await fetchData();
+                    {user?.role === 'admin' && (
+                      <button 
+                        onClick={async () => {
+                          if (confirm('Are you sure you want to delete this boarder? This will remove all their history.')) {
+                            try {
+                              const res = await fetch(`/api/boarders/${boarder.id}`, { method: 'DELETE' });
+                              if (!res.ok) {
+                                const err = await res.json();
+                                alert(err.error || 'Failed to delete boarder. They might have rental history.');
+                              } else {
+                                await fetchData();
+                              }
+                            } catch (err) {
+                              alert('Network error while deleting boarder');
                             }
-                          } catch (err) {
-                            alert('Network error while deleting boarder');
                           }
-                        }
-                      }}
-                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                        }}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                     {boarder.rental_id && (
                       <button 
                         onClick={async () => {
@@ -597,6 +833,10 @@ export default function App() {
     </div>
     );
   };
+
+  if (!user) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
@@ -637,47 +877,76 @@ export default function App() {
               icon={<LayoutDashboard size={20} />} 
               label="Dashboard" 
             />
-            <NavItem 
-              active={activeTab === 'rooms'} 
-              onClick={() => { setActiveTab('rooms'); setIsSidebarOpen(false); }}
-              icon={<Home size={20} />} 
-              label="Rooms & Floors" 
-            />
-            <NavItem 
-              active={activeTab === 'boarders'} 
-              onClick={() => { setActiveTab('boarders'); setIsSidebarOpen(false); }}
-              icon={<Users size={20} />} 
-              label="Boarders" 
-            />
-            <NavItem 
-              active={activeTab === 'payments'} 
-              onClick={() => { setActiveTab('payments'); setIsSidebarOpen(false); }}
-              icon={<CreditCard size={20} />} 
-              label="Payments" 
-            />
-            <NavItem 
-              active={activeTab === 'reminders'} 
-              onClick={() => { setActiveTab('reminders'); setIsSidebarOpen(false); }}
-              icon={<Bell size={20} />} 
-              label="Reminders" 
-            />
-            <NavItem 
-              active={activeTab === 'reports'} 
-              onClick={() => { setActiveTab('reports'); setIsSidebarOpen(false); }}
-              icon={<Download size={20} />} 
-              label="Reports" 
-            />
-            <NavItem 
-              active={activeTab === 'audit'} 
-              onClick={() => { setActiveTab('audit'); setIsSidebarOpen(false); }}
-              icon={<History size={20} />} 
-              label="Activity Log" 
-            />
+            {user?.role !== 'boarder' && (
+              <>
+                <NavItem 
+                  active={activeTab === 'rooms'} 
+                  onClick={() => { setActiveTab('rooms'); setIsSidebarOpen(false); }}
+                  icon={<Home size={20} />} 
+                  label="Rooms & Floors" 
+                />
+                <NavItem 
+                  active={activeTab === 'boarders'} 
+                  onClick={() => { setActiveTab('boarders'); setIsSidebarOpen(false); }}
+                  icon={<Users size={20} />} 
+                  label="Boarders" 
+                />
+                <NavItem 
+                  active={activeTab === 'payments'} 
+                  onClick={() => { setActiveTab('payments'); setIsSidebarOpen(false); }}
+                  icon={<CreditCard size={20} />} 
+                  label="Payments" 
+                />
+              </>
+            )}
+            
             <NavItem 
               active={activeTab === 'maintenance'} 
               onClick={() => { setActiveTab('maintenance'); setIsSidebarOpen(false); }}
               icon={<Wrench size={20} />} 
               label="Maintenance" 
+            />
+
+            {user?.role === 'admin' && (
+              <>
+                <div className="pt-4 pb-2 px-4">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Admin Tools</p>
+                </div>
+                <NavItem 
+                  active={activeTab === 'reports'} 
+                  onClick={() => { setActiveTab('reports'); setIsSidebarOpen(false); }}
+                  icon={<TrendingUp size={20} />} 
+                  label="Financial Reports" 
+                />
+                <NavItem 
+                  active={activeTab === 'reminders'} 
+                  onClick={() => { setActiveTab('reminders'); setIsSidebarOpen(false); }}
+                  icon={<Bell size={20} />} 
+                  label="Reminder History" 
+                />
+                <NavItem 
+                  active={activeTab === 'audit'} 
+                  onClick={() => { setActiveTab('audit'); setIsSidebarOpen(false); }}
+                  icon={<History size={20} />} 
+                  label="Activity Log" 
+                />
+                <NavItem 
+                  active={activeTab === 'users'} 
+                  onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }}
+                  icon={<UserIcon size={20} />} 
+                  label="User Accounts" 
+                />
+              </>
+            )}
+
+            <div className="pt-4 pb-2 px-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">User</p>
+            </div>
+            <NavItem 
+              active={activeTab === 'settings'} 
+              onClick={() => { setActiveTab('settings'); setIsSidebarOpen(false); }}
+              icon={<Settings size={20} />} 
+              label="Settings" 
             />
             <NavItem 
               active={activeTab === 'guide'} 
@@ -686,14 +955,24 @@ export default function App() {
               label="User Guide" 
             />
           </nav>
+          
+          <button 
+            onClick={handleLogout}
+            className="mt-4 flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all w-full text-left font-bold text-sm"
+          >
+            <LogOut size={20} />
+            <span>Logout</span>
+          </button>
         </div>
 
         <div className="mt-auto p-6 border-t border-slate-100">
-          <div className="bg-slate-50 p-4 rounded-2xl">
-            <p className="text-xs font-bold text-slate-400 uppercase mb-2">System Status</p>
-            <div className="flex items-center gap-2 text-emerald-600">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-sm font-medium">All Systems Online</span>
+          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl">
+            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-600 shadow-sm">
+              <UserIcon size={20} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-800 truncate">{user?.username}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase truncate">{user?.role}</p>
             </div>
           </div>
         </div>
@@ -708,7 +987,7 @@ export default function App() {
             </button>
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 capitalize">{activeTab}</h2>
-              <p className="text-slate-500 text-sm">Welcome back, Admin</p>
+              <p className="text-slate-500 text-sm">Welcome back, {user.username}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -790,17 +1069,19 @@ export default function App() {
                           <td className="p-4 font-bold">LKR {p.amount}</td>
                           <td className="p-4 text-slate-400 text-sm">{p.payment_date}</td>
                           <td className="p-4">
-                            <button 
-                              onClick={async () => {
-                                if (confirm('Delete this payment record?')) {
-                                  await fetch(`/api/payments/${p.id}`, { method: 'DELETE' });
-                                  fetchData();
-                                }
-                              }}
-                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            {user?.role === 'admin' && (
+                              <button 
+                                onClick={async () => {
+                                  if (confirm('Delete this payment record?')) {
+                                    await fetch(`/api/payments/${p.id}`, { method: 'DELETE' });
+                                    fetchData();
+                                  }
+                                }}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -886,7 +1167,7 @@ export default function App() {
                 </div>
               </div>
             )}
-            {activeTab === 'audit' && (
+            {activeTab === 'audit' && user?.role === 'admin' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h2 className="text-2xl font-bold text-slate-800">Activity Log</h2>
@@ -941,12 +1222,21 @@ export default function App() {
                   </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {maintenance.length === 0 ? (
-                    <div className="col-span-full p-12 text-center bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">
-                      No maintenance requests found.
-                    </div>
-                  ) : (
-                    maintenance.map(req => (
+                  {(() => {
+                    const myBoarder = user?.role === 'boarder' ? boarders.find(b => b.id === user.boarder_id) : null;
+                    const filteredMaintenance = user?.role === 'boarder' 
+                      ? maintenance.filter(req => req.room_number === myBoarder?.room_number)
+                      : maintenance;
+
+                    if (filteredMaintenance.length === 0) {
+                      return (
+                        <div className="col-span-full p-12 text-center bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">
+                          No maintenance requests found.
+                        </div>
+                      );
+                    }
+
+                    return filteredMaintenance.map(req => (
                       <div key={req.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
                         <div className={`absolute top-0 left-0 w-1 h-full ${
                           req.priority === 'high' ? 'bg-red-500' :
@@ -966,7 +1256,7 @@ export default function App() {
                         </div>
                         <p className="text-sm text-slate-600 mb-6 line-clamp-3">{req.description}</p>
                         <div className="flex gap-2">
-                          {req.status !== 'completed' && (
+                          {user?.role !== 'boarder' && req.status !== 'completed' && (
                             <button 
                               onClick={async () => {
                                 const nextStatus = req.status === 'pending' ? 'in_progress' : 'completed';
@@ -983,62 +1273,192 @@ export default function App() {
                               {req.status === 'pending' ? 'Start' : 'Complete'}
                             </button>
                           )}
-                          <button 
-                            onClick={async () => {
-                              if (confirm('Delete this request?')) {
-                                await fetch(`/api/maintenance/${req.id}`, { method: 'DELETE' });
-                                fetchData();
-                              }
-                            }}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {user?.role !== 'boarder' && (
+                            <button 
+                              onClick={async () => {
+                                if (confirm('Delete this request?')) {
+                                  await fetch(`/api/maintenance/${req.id}`, { method: 'DELETE' });
+                                  await fetchData();
+                                }
+                              }}
+                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
                         </div>
                       </div>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </div>
+              </div>
+            )}
+            {activeTab === 'users' && user?.role === 'admin' && renderUsers()}
+            {activeTab === 'settings' && (
+              <div className="max-w-2xl mx-auto space-y-8">
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                  <div className="flex items-center gap-4 mb-8">
+                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400">
+                      <UserIcon size={32} />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black text-slate-800">{user?.username}</h2>
+                      <p className="text-slate-500 font-medium capitalize">{user?.role} Account</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">Password</p>
+                        <p className="text-xs text-slate-500">Security & Privacy</p>
+                      </div>
+                      <button 
+                        onClick={() => setShowChangePassword(true)}
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        Change Password
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {showChangePassword && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100"
+                  >
+                    <h3 className="text-xl font-black text-slate-800 mb-6">Change Password</h3>
+                    <form onSubmit={handleChangePassword} className="space-y-4">
+                      {passwordStatus.message && (
+                        <div className={`p-4 rounded-2xl text-sm font-medium ${passwordStatus.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                          {passwordStatus.message}
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Current Password</label>
+                        <input 
+                          type="password" 
+                          required
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                          value={passwordData.current}
+                          onChange={e => setPasswordData({...passwordData, current: e.target.value})}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-400 uppercase">New Password</label>
+                          <input 
+                            type="password" 
+                            required
+                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                            value={passwordData.new}
+                            onChange={e => setPasswordData({...passwordData, new: e.target.value})}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-400 uppercase">Confirm New Password</label>
+                          <input 
+                            type="password" 
+                            required
+                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+                            value={passwordData.confirm}
+                            onChange={e => setPasswordData({...passwordData, confirm: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-4 pt-4">
+                        <button 
+                          type="submit"
+                          className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-colors"
+                        >
+                          Update Password
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => setShowChangePassword(false)}
+                          className="px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                )}
               </div>
             )}
             {activeTab === 'guide' && (
               <div className="space-y-8 max-w-4xl">
                 <div className="bg-blue-600 p-8 rounded-3xl text-white shadow-xl shadow-blue-500/20">
-                  <h2 className="text-3xl font-bold mb-2">System User Guide</h2>
-                  <p className="text-blue-100">Welcome to your Boarding House Management System. Here is how to manage your property efficiently.</p>
+                  <h2 className="text-3xl font-bold mb-2">
+                    {user?.role === 'admin' ? 'Administrator Guide' : 
+                     user?.role === 'staff' ? 'Staff Guide' : 'Resident Guide'}
+                  </h2>
+                  <p className="text-blue-100">
+                    {user?.role === 'admin' ? 'Complete control over property management, finances, and users.' :
+                     user?.role === 'staff' ? 'Manage daily operations, boarders, and maintenance tasks.' :
+                     'Manage your stay, track payments, and request maintenance.'}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <GuideSection 
-                    icon={<LayoutDashboard className="text-blue-500" />}
-                    title="1. Dashboard Overview"
-                    content="The dashboard gives you a bird's-eye view of your business. Monitor total income, occupancy rates, and active boarders. The 'Pending Payments' section automatically lists boarders who haven't paid for the current month."
-                  />
-                  <GuideSection 
-                    icon={<Home className="text-blue-500" />}
-                    title="2. Managing Rooms"
-                    content="Go to 'Rooms & Floors' to see your building layout. Click the Edit icon on any room to change its monthly price or capacity. To rent a room, click 'Start Rental' on an available room."
-                  />
-                  <GuideSection 
-                    icon={<Users className="text-blue-500" />}
-                    title="3. Boarder Management"
-                    content="Add new boarders first, then assign them to rooms. You can track their workplace and emergency contacts. When a boarder leaves, use the 'End Rental' button to free up the room while keeping their records."
-                  />
-                  <GuideSection 
-                    icon={<CreditCard className="text-blue-500" />}
-                    title="4. Payments & Billing"
-                    content="Record Rent, Water, or Electricity payments. The system tracks payments by month. You can view the full history in the 'Payments' tab or see recent transactions on the Dashboard."
-                  />
-                  <GuideSection 
-                    icon={<Wrench className="text-blue-500" />}
-                    title="5. Maintenance Tracking"
-                    content="Found a leak or a broken bulb? Log it in the 'Maintenance' tab. Set priorities (High/Medium/Low) and track the status from 'Pending' to 'Completed'."
-                  />
-                  <GuideSection 
-                    icon={<History className="text-blue-500" />}
-                    title="6. Audit & Security"
-                    content="Every important change (deletions, price updates, new boarders) is recorded in the 'Activity Log'. This ensures you have a transparent history of all administrative actions."
-                  />
+                  {user?.role === 'boarder' ? (
+                    <>
+                      <GuideSection 
+                        icon={<LayoutDashboard className="text-blue-500" />}
+                        title="1. Your Dashboard"
+                        content="View your assigned room details, monthly rent amount, and current payment status (Paid/Due). You can also see your last 5 payment records."
+                      />
+                      <GuideSection 
+                        icon={<Wrench className="text-blue-500" />}
+                        title="2. Request Maintenance"
+                        content="If something in your room needs fixing, go to the 'Maintenance' tab and click 'New Request'. Describe the issue and set a priority."
+                      />
+                      <GuideSection 
+                        icon={<Settings className="text-blue-500" />}
+                        title="3. Account Settings"
+                        content="Keep your account secure by changing your password regularly in the 'Settings' tab."
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <GuideSection 
+                        icon={<LayoutDashboard className="text-blue-500" />}
+                        title="1. Dashboard Overview"
+                        content={user?.role === 'admin' 
+                          ? "Monitor total income, occupancy rates, and active boarders. Send reminders to boarders who haven't paid."
+                          : "Monitor occupancy rates and active boarders. Track pending payments and send reminders."}
+                      />
+                      <GuideSection 
+                        icon={<Home className="text-blue-500" />}
+                        title="2. Managing Rooms"
+                        content="View building layout and room status. Staff can view details, while Admins can edit prices and capacity."
+                      />
+                      <GuideSection 
+                        icon={<Users className="text-blue-500" />}
+                        title="3. Boarder Management"
+                        content="Register new boarders and assign them to rooms. Track their contact info and emergency details."
+                      />
+                      <GuideSection 
+                        icon={<CreditCard className="text-blue-500" />}
+                        title="4. Payments & Billing"
+                        content="Record Rent, Water, or Electricity payments. View full payment history for all boarders."
+                      />
+                      <GuideSection 
+                        icon={<Wrench className="text-blue-500" />}
+                        title="5. Maintenance Tracking"
+                        content="Log and track maintenance issues. Update status from 'Pending' to 'In Progress' and 'Completed'."
+                      />
+                      {user?.role === 'admin' && (
+                        <GuideSection 
+                          icon={<History className="text-blue-500" />}
+                          title="6. Audit & Security"
+                          content="Every administrative action is recorded in the 'Activity Log'. Manage system users in 'User Accounts'."
+                        />
+                      )}
+                    </>
+                  )}
                 </div>
 
                 <div className="bg-slate-800 p-8 rounded-3xl text-white">
@@ -1047,9 +1467,9 @@ export default function App() {
                     Pro Tips
                   </h3>
                   <ul className="space-y-3 text-slate-300 text-sm">
-                    <li>• Use the <strong>Search Bar</strong> at the top to quickly find boarders by name or room number.</li>
-                    <li>• Click the <strong>Download</strong> icon in any tab to export your data to Excel (CSV format).</li>
-                    <li>• Send <strong>Reminders</strong> to pending boarders with one click from the Dashboard.</li>
+                    {user?.role !== 'boarder' && <li>• Use the <strong>Search Bar</strong> to quickly find boarders or rooms.</li>}
+                    {user?.role !== 'boarder' && <li>• Click the <strong>Download</strong> icon to export data to CSV.</li>}
+                    <li>• Keep your <strong>Password</strong> updated for better security.</li>
                   </ul>
                 </div>
               </div>
@@ -1146,6 +1566,27 @@ export default function App() {
           />
         </Modal>
       )}
+
+      {showAddUser && (
+        <Modal title="Add System User" onClose={() => setShowAddUser(false)}>
+          <UserForm 
+            onSubmit={async (data) => {
+              const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+              });
+              if (res.ok) {
+                setShowAddUser(false);
+                fetchData();
+              } else {
+                const err = await res.json();
+                alert(err.error || 'Failed to create user');
+              }
+            }} 
+          />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1191,6 +1632,55 @@ function GuideSection({ icon, title, content }: { icon: React.ReactNode, title: 
       <h4 className="font-bold text-slate-800 mb-2">{title}</h4>
       <p className="text-sm text-slate-500 leading-relaxed">{content}</p>
     </div>
+  );
+}
+
+function UserForm({ onSubmit }: { onSubmit: (data: any) => void }) {
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    role: 'staff'
+  });
+
+  return (
+    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }}>
+      <div>
+        <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Username</label>
+        <input 
+          required 
+          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" 
+          value={formData.username} 
+          onChange={e => setFormData({...formData, username: e.target.value.toLowerCase().replace(/\s+/g, '')})}
+          placeholder="e.g. staff_john"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Password</label>
+        <input 
+          required 
+          type="password"
+          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" 
+          value={formData.password} 
+          onChange={e => setFormData({...formData, password: e.target.value})}
+          placeholder="••••••••"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Role</label>
+        <select 
+          required 
+          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" 
+          value={formData.role} 
+          onChange={e => setFormData({...formData, role: e.target.value})}
+        >
+          <option value="staff">Staff Member</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </div>
+      <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20">
+        Create User Account
+      </button>
+    </form>
   );
 }
 
@@ -1520,5 +2010,136 @@ function PaymentForm({ boarders, onSubmit }: { boarders: Boarder[], onSubmit: (d
         Record Payment
       </button>
     </form>
+  );
+}
+
+function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState('admin');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, role })
+      });
+      if (res.ok) {
+        onLogin(await res.json());
+      } else {
+        setError('Invalid username or password');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-pink-500 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white/95 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-md border border-white/20"
+      >
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30">
+            <Home className="text-white" size={40} />
+          </div>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">BoardingHouse</h1>
+          <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-1 font-bold">Management System v2.0</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl flex items-center gap-2"
+            >
+              <AlertTriangle size={18} />
+              {error}
+            </motion.div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-slate-700 ml-1">Sign in as</label>
+            <div className="relative">
+              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <select 
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium appearance-none"
+              >
+                <option value="admin">Administrator</option>
+                <option value="boarder">Boarder</option>
+                <option value="staff">Staff Member</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-slate-700 ml-1">Username</label>
+            <div className="relative">
+              <Users className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <input 
+                type="text" 
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
+                placeholder="Enter your username"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
+            <div className="relative">
+              <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <input 
+                type={showPassword ? "text" : "password"} 
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium"
+                placeholder="••••••••"
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+          >
+            {loading ? 'Authenticating...' : 'Sign In Now'}
+          </button>
+
+          <div className="text-center">
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+              {role === 'boarder' ? 'Tip: Use your name (no spaces) and phone number' : 
+               role === 'staff' ? 'Contact admin for your staff credentials' :
+               'Administrator access required'}
+            </p>
+          </div>
+        </form>
+      </motion.div>
+    </div>
   );
 }

@@ -73,6 +73,19 @@ async function initializeDatabase() {
         emergency_contact_phone TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT, -- In a real app, use hashing like bcrypt
+        role TEXT DEFAULT 'admin', -- 'admin', 'boarder', 'staff'
+        boarder_id INTEGER REFERENCES boarders(id) NULL
+      );
+
+      -- Create a default admin user if not exists
+      INSERT INTO users (username, password, role) 
+      VALUES ('admin', 'admin123', 'admin')
+      ON CONFLICT (username) DO NOTHING;
+
       CREATE TABLE IF NOT EXISTS rentals (
         id SERIAL PRIMARY KEY,
         room_id INTEGER REFERENCES rooms(id),
@@ -172,7 +185,7 @@ async function startServer() {
 
   const app = express();
   app.use(express.json());
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Health check route
   app.get("/api/health", (req, res) => {
@@ -181,6 +194,44 @@ async function startServer() {
       database: process.env.DATABASE_URL ? "configured" : "missing",
       env: process.env.NODE_ENV || "development"
     });
+  });
+
+  // Auth Endpoints
+  app.post("/api/login", async (req, res) => {
+    const { username, password, role } = req.body;
+    try {
+      const userRes = await pool.query(
+        "SELECT * FROM users WHERE username = $1 AND password = $2 AND role = $3", 
+        [username, password, role]
+      );
+      if (userRes.rows.length > 0) {
+        const user = userRes.rows[0];
+        res.json({ 
+          id: user.id, 
+          username: user.username, 
+          role: user.role,
+          boarder_id: user.boarder_id 
+        });
+      } else {
+        res.status(401).json({ error: "Invalid username, password or role" });
+      }
+    } catch (err) {
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/users/change-password", async (req, res) => {
+    const { userId, currentPassword, newPassword } = req.body;
+    try {
+      const userRes = await pool.query("SELECT * FROM users WHERE id = $1 AND password = $2", [userId, currentPassword]);
+      if (userRes.rows.length === 0) {
+        return res.status(401).json({ error: "Current password incorrect" });
+      }
+      await pool.query("UPDATE users SET password = $1 WHERE id = $2", [newPassword, userId]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   // API Routes
@@ -379,10 +430,69 @@ async function startServer() {
       `, [name, age, contact_number, address, workplace, emergency_contact_name, emergency_contact_phone]);
       
       const boarderId = boarderRes.rows[0].id;
+
+      // Automatically create a user account for the boarder
+      // Username: name (lowercase, no spaces)
+      // Password: contact_number
+      const username = name.toLowerCase().replace(/\s+/g, '');
+      await pool.query(`
+        INSERT INTO users (username, password, role, boarder_id)
+        VALUES ($1, $2, 'boarder', $3)
+        ON CONFLICT (username) DO NOTHING
+      `, [username, contact_number, boarderId]);
+
       await logAction('CREATE', 'BOARDER', boarderId, `Added boarder ${name}`);
       res.json({ id: boarderId });
     } catch (err) {
       res.status(500).json({ error: "Failed to add boarder" });
+    }
+  });
+
+  // User Management Endpoints
+  app.get("/api/users", async (req, res) => {
+    try {
+      const usersRes = await pool.query(`
+        SELECT u.id, u.username, u.role, u.boarder_id, b.name as boarder_name
+        FROM users u
+        LEFT JOIN boarders b ON u.boarder_id = b.id
+        ORDER BY u.role, u.username
+      `);
+      res.json(usersRes.rows);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.post("/api/users", async (req, res) => {
+    const { username, password, role } = req.body;
+    try {
+      await pool.query(
+        "INSERT INTO users (username, password, role) VALUES ($1, $2, $3)",
+        [username, password, role]
+      );
+      await logAction('CREATE', 'USER', username, `Created new ${role} user: ${username}`);
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('unique constraint')) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+      res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+
+  app.delete("/api/users/:id", async (req, res) => {
+    try {
+      const userRes = await pool.query("SELECT username FROM users WHERE id = $1", [req.params.id]);
+      if (userRes.rows.length === 0) return res.status(404).json({ error: "User not found" });
+      
+      const username = userRes.rows[0].username;
+      if (username === 'admin') return res.status(403).json({ error: "Cannot delete default admin" });
+
+      await pool.query("DELETE FROM users WHERE id = $1", [req.params.id]);
+      await logAction('DELETE', 'USER', req.params.id, `Deleted user: ${username}`);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete user" });
     }
   });
 
