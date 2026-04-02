@@ -659,6 +659,8 @@ export async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+  }
+  
   if (process.env.NODE_ENV === "production" && !process.env.NETLIFY) {
     app.use(express.static(path.join(__dirname, "dist")));
     app.get("*", (req, res) => {
