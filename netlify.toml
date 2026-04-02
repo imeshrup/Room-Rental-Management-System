@@ -1,5 +1,5 @@
 [functions]
-  node_bundle = true
+  node_bundler = "esbuild"
 
 [build]
   command = "npm run build"
