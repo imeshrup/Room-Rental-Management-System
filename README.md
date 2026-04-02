@@ -1,21 +1,41 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="<img width="1914" height="863" alt="image" src="https://github.com/user-attachments/assets/f5c78ea5-f6e6-46b8-849b-3753db91345e" />
-" />
+  <img width="100%" alt="Boarding House Dashboard" src="https://github.com/user-attachments/assets/f5c78ea5-f6e6-46b8-849b-3753db91345e" />
 </div>
 
-# Run and deploy your AI Studio app
+# Boarding House Management System
 
-This contains everything you need to run your app locally.
+A professional, full-stack solution for managing boarding houses, rentals, and maintenance.
 
-View your app in AI Studio: https://ai.studio/apps/50903493-9508-40f3-b174-bace7dc9f8b8
+## 🚀 Features
 
-## Run Locally
+*   **Dashboard:** Real-time stats on income, occupancy, and pending payments.
+*   **Room Management:** Track room availability, pricing, and capacity across multiple floors.
+*   **Boarder Records:** Maintain detailed profiles including emergency contacts and workplace info.
+*   **Payment Tracking:** Record rent, water, and electricity bills with automated month-tracking.
+*   **Reminders:** Send one-click payment reminders to boarders with overdue rent.
+*   **Maintenance:** Log and prioritize repair requests for specific rooms.
+*   **Activity Log:** Full audit trail of every deletion, update, and creation.
 
-**Prerequisites:**  Node.js
+## 🛠️ Run Locally
 
+**Prerequisites:** Node.js (v18+)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1.  **Clone/Extract** the project.
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Run the app:**
+    ```bash
+    npm run dev
+    ```
+4.  **Access the app:** Open `http://localhost:3000` in your browser.
+
+## 📦 Deployment
+
+This app is ready to be deployed to **Google Cloud Run** via the AI Studio interface. 
+
+> **Note:** For permanent data storage in production, it is recommended to connect an external database like Supabase or Firebase to prevent data loss during container restarts.
+
+---
+*View this app in AI Studio: [https://ai.studio/apps/50903493-9508-40f3-b174-bace7dc9f8b8](https://ai.studio/apps/50903493-9508-40f3-b174-bace7dc9f8b8)*
