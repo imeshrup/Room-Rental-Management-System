@@ -274,7 +274,7 @@ export default function App() {
               </div>
               <h3 className="text-slate-500 text-sm font-bold uppercase mb-1">Your Room</h3>
               <p className="text-2xl font-black text-slate-800">{myRoom ? `Room ${myRoom.room_number}` : 'Not Assigned'}</p>
-              <p className="text-xs text-slate-400 mt-1">{myRoom ? `${myRoom.type} • ${myRoom.floor} Floor` : 'Contact admin'}</p>
+              <p className="text-xs text-slate-400 mt-1">{myRoom ? `${myRoom.type} • ${myRoom.floor} Floor` : 'Contact host'}</p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -484,7 +484,7 @@ export default function App() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
           >
             <Plus size={20} />
-            Add Staff/Admin
+            Add Staff/Host
           </button>
         </div>
 
@@ -513,7 +513,7 @@ export default function App() {
                         u.role === 'staff' ? 'bg-blue-100 text-blue-600' :
                         'bg-emerald-100 text-emerald-600'
                       }`}>
-                        {u.role}
+                        {u.role === 'admin' ? 'Host' : u.role}
                       </span>
                     </td>
                     <td className="p-4 text-sm text-slate-600">
@@ -910,7 +910,7 @@ export default function App() {
             {user?.role === 'admin' && (
               <>
                 <div className="pt-4 pb-2 px-4">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Admin Tools</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Host Tools</p>
                 </div>
                 <NavItem 
                   active={activeTab === 'reports'} 
@@ -1392,7 +1392,7 @@ export default function App() {
               <div className="space-y-8 max-w-4xl">
                 <div className="bg-blue-600 p-8 rounded-3xl text-white shadow-xl shadow-blue-500/20">
                   <h2 className="text-3xl font-bold mb-2">
-                    {user?.role === 'admin' ? 'Administrator Guide' : 
+                    {user?.role === 'admin' ? 'Host Guide' : 
                      user?.role === 'staff' ? 'Staff Guide' : 'Resident Guide'}
                   </h2>
                   <p className="text-blue-100">
@@ -1674,7 +1674,7 @@ function UserForm({ onSubmit }: { onSubmit: (data: any) => void }) {
           onChange={e => setFormData({...formData, role: e.target.value})}
         >
           <option value="staff">Staff Member</option>
-          <option value="admin">Administrator</option>
+          <option value="admin">Host (Owner)</option>
         </select>
       </div>
       <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20">
@@ -2079,7 +2079,7 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                 onChange={(e) => setRole(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium appearance-none"
               >
-                <option value="admin">Administrator</option>
+                <option value="admin">Host (Owner)</option>
                 <option value="boarder">Boarder</option>
                 <option value="staff">Staff Member</option>
               </select>
@@ -2135,7 +2135,7 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
               {role === 'boarder' ? 'Tip: Use your name (no spaces) and phone number' : 
                role === 'staff' ? 'Contact admin for your staff credentials' :
-               'Administrator access required'}
+               'Host access required'}
             </p>
           </div>
         </form>

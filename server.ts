@@ -162,7 +162,9 @@ async function initializeDatabase() {
   }
 }
 
-async function startServer() {
+export const app = express();
+
+export async function startServer() {
   try {
     await initializeDatabase();
   } catch (err) {
@@ -183,7 +185,6 @@ async function startServer() {
     }
   };
 
-  const app = express();
   app.use(express.json());
   const PORT = Number(process.env.PORT) || 3000;
 
@@ -658,16 +659,20 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
+  if (process.env.NODE_ENV === "production" && !process.env.NETLIFY) {
     app.use(express.static(path.join(__dirname, "dist")));
     app.get("*", (req, res) => {
       res.sendFile(path.join(__dirname, "dist", "index.html"));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.NETLIFY) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-startServer();
+if (!process.env.NETLIFY) {
+  startServer();
+}
