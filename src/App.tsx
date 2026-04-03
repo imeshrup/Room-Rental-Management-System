@@ -484,7 +484,7 @@ export default function App() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
           >
             <Plus size={20} />
-            Add Staff/Host
+            Add Staff/Administrator
           </button>
         </div>
 
@@ -513,7 +513,7 @@ export default function App() {
                         u.role === 'staff' ? 'bg-blue-100 text-blue-600' :
                         'bg-emerald-100 text-emerald-600'
                       }`}>
-                        {u.role === 'admin' ? 'Host' : u.role}
+                        {u.role === 'admin' ? 'Administrator' : u.role}
                       </span>
                     </td>
                     <td className="p-4 text-sm text-slate-600">
@@ -2079,7 +2079,7 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                 onChange={(e) => setRole(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium appearance-none"
               >
-                <option value="admin">Host (Owner)</option>
+                <option value="admin">Administrator (Owner)</option>
                 <option value="boarder">Boarder</option>
                 <option value="staff">Staff Member</option>
               </select>
@@ -2135,7 +2135,7 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
               {role === 'boarder' ? 'Tip: Use your name (no spaces) and phone number' : 
                role === 'staff' ? 'Contact admin for your staff credentials' :
-               'Host access required'}
+               'Administrator access required'}
             </p>
           </div>
         </form>

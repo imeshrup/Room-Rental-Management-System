@@ -37,18 +37,32 @@ async function initializeDatabase() {
   try {
     const url = new URL(dbUrl);
     console.log(`Attempting to connect to database at: ${url.hostname}`);
+    
+    // Auto-detect if SSL should be used (most cloud providers require it)
+    const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    const useSSL = !isLocalhost || process.env.NODE_ENV === "production";
+    
+    console.log(`Database SSL mode: ${useSSL ? 'Enabled (rejectUnauthorized: false)' : 'Disabled'}`);
+    
+    // Update the global pool to use the cleaned URL and appropriate SSL settings
+    pool = new Pool({
+      connectionString: dbUrl,
+      ssl: useSSL ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 10000, // 10 seconds timeout
+    });
   } catch (e) {
     console.error("DATABASE_URL is not a valid URL format.");
+    // Fallback pool creation if URL parsing fails (might still work if it's a valid pg string)
+    pool = new Pool({
+      connectionString: dbUrl,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 10000,
+    });
   }
-
-  // Update the global pool to use the cleaned URL
-  pool = new Pool({
-    connectionString: dbUrl,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
-  });
 
   let client;
   try {
+    console.log("Connecting to database...");
     client = await pool.connect();
     console.log("Successfully connected to PostgreSQL database.");
     await client.query(`
@@ -200,13 +214,24 @@ export async function startServer() {
   // Auth Endpoints
   app.post("/api/login", async (req, res) => {
     const { username, password, role } = req.body;
+    console.log(`Login attempt: username=${username}, role=${role}`);
+    
+    if (!pool) {
+      console.error("Database pool is not initialized.");
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
     try {
+      console.log("Executing login query...");
       const userRes = await pool.query(
         "SELECT * FROM users WHERE username = $1 AND password = $2 AND role = $3", 
         [username, password, role]
       );
+      console.log(`Query completed. Rows found: ${userRes.rows.length}`);
+
       if (userRes.rows.length > 0) {
         const user = userRes.rows[0];
+        console.log(`Login successful for user: ${username}`);
         res.json({ 
           id: user.id, 
           username: user.username, 
@@ -214,10 +239,12 @@ export async function startServer() {
           boarder_id: user.boarder_id 
         });
       } else {
+        console.log(`Login failed: Invalid credentials for ${username}`);
         res.status(401).json({ error: "Invalid username, password or role" });
       }
     } catch (err) {
-      res.status(500).json({ error: "Login failed" });
+      console.error("Login error details:", err);
+      res.status(500).json({ error: "Login failed due to server error" });
     }
   });
 
