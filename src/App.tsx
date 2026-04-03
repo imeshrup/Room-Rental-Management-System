@@ -2216,7 +2216,7 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                     ))}
                   </div>
                 )}
-                <div className="flex items-center justify-between mt-2">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-amber-200/50">
                   <button 
                     type="button"
                     onClick={() => {
@@ -2233,11 +2233,23 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                   <button 
                     type="button"
                     onClick={() => {
+                      fetch('/api/debug/users')
+                        .then(res => res.json())
+                        .then(data => alert("Users in DB:\n" + JSON.stringify(data, null, 2)))
+                        .catch(err => alert("Debug Error: " + err));
+                    }}
+                    className="text-[10px] font-bold text-purple-600 hover:text-purple-800 underline underline-offset-2"
+                  >
+                    Debug: List Users
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
                       if (confirm("This will refresh the page to clear cache. Continue?")) {
                         window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
                       }
                     }}
-                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold underline"
+                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold underline ml-auto"
                   >
                     Force Clear Cache
                   </button>

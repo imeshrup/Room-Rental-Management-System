@@ -214,10 +214,16 @@ async function initializeDatabase() {
       }
       console.log("Database seeded with initial rooms.");
     }
+    (global as any).dbStatus = "connected";
+    (global as any).dbError = null;
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`FATAL DB ERROR: ${msg}`);
+    (global as any).dbStatus = "error";
+    (global as any).dbError = msg;
     console.error("Database initialization error:", err);
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
@@ -281,8 +287,8 @@ export async function startServer() {
     res.json({ 
       status: "ok", 
       version: "2.1-DEBUG",
-      database: dbStatus || "unknown_empty",
-      databaseError: dbError,
+      database: (global as any).dbStatus || "initializing",
+      databaseError: (global as any).dbError,
       env: process.env.NODE_ENV || "development",
       netlify: !!process.env.NETLIFY,
       hasConfig: hasUrl,
@@ -292,6 +298,16 @@ export async function startServer() {
       logs: serverLogs,
       timestamp: new Date().toISOString()
     });
+  });
+
+  app.get("/api/debug/users", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "No pool" });
+    try {
+      const result = await pool.query("SELECT username, role FROM users LIMIT 10");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
   });
 
   // Auth Endpoints
