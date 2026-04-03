@@ -12,22 +12,26 @@ const __dirname = path.dirname(__filename);
 let pool: any;
 
 async function initializeDatabase() {
-  let dbUrl = process.env.DATABASE_URL;
+  console.log("Initializing database connection...");
+  const dbUrl = process.env.DATABASE_URL;
   
   if (!dbUrl || dbUrl === "base") {
-    console.error("DATABASE_URL is missing or placeholder.");
-    return; // Don't throw, let the health check report it
+    console.error("DATABASE_URL is missing or set to 'base'. Please check your Netlify environment variables.");
+    return;
   }
 
+  console.log(`DATABASE_URL found. Length: ${dbUrl.length}. Starts with: ${dbUrl.substring(0, 10)}...`);
+  
+  let cleanedUrl = dbUrl;
   // Auto-fix: Remove accidental brackets [] around the password if the user copied them from a template
-  if (dbUrl.includes(":[") && dbUrl.includes("]@")) {
+  if (cleanedUrl.includes(":[") && cleanedUrl.includes("]@")) {
     console.log("Auto-fixing DATABASE_URL: Removing accidental brackets around password...");
-    dbUrl = dbUrl.replace(":[", ":").replace("]@", "@");
+    cleanedUrl = cleanedUrl.replace(":[", ":").replace("]@", "@");
   }
 
   try {
-    const url = new URL(dbUrl);
-    console.log(`Attempting to connect to database at: ${url.hostname}`);
+    const url = new URL(cleanedUrl);
+    console.log(`Database hostname: ${url.hostname}`);
     
     // Auto-detect if SSL should be used (most cloud providers require it)
     const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
@@ -35,18 +39,17 @@ async function initializeDatabase() {
     
     console.log(`Database SSL mode: ${useSSL ? 'Enabled (rejectUnauthorized: false)' : 'Disabled'}`);
     
-    // Update the global pool to use the cleaned URL and appropriate SSL settings
     pool = new Pool({
-      connectionString: dbUrl,
+      connectionString: cleanedUrl,
       ssl: useSSL ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 15000, // 15 seconds timeout for serverless
+      connectionTimeoutMillis: 15000,
       idleTimeoutMillis: 30000,
       max: 10
     });
   } catch (e) {
-    console.error("DATABASE_URL is not a valid URL format, using raw string.");
+    console.error("DATABASE_URL is not a valid URL format. Using raw string fallback.");
     pool = new Pool({
-      connectionString: dbUrl,
+      connectionString: cleanedUrl,
       ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
       connectionTimeoutMillis: 15000,
     });
@@ -699,14 +702,21 @@ export async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  // Vite middleware for development - strictly disabled on Netlify
+  if (process.env.NODE_ENV !== "production" && !process.env.NETLIFY) {
+    try {
+      // Use a dynamic string to prevent bundlers from following this import in production
+      const vitePkg = "vite";
+      const { createServer: createViteServer } = await import(vitePkg);
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("Vite development middleware loaded.");
+    } catch (e) {
+      console.warn("Vite not found or failed to load, skipping dev middleware.");
+    }
   }
   
   if (process.env.NODE_ENV === "production" && !process.env.NETLIFY) {
