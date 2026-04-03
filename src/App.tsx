@@ -32,7 +32,6 @@ import {
   Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI } from "@google/genai";
 
 // Types
 interface Room {
@@ -1699,6 +1698,7 @@ function MaintenanceForm({ rooms, onSubmit }: { rooms: Room[], onSubmit: (data: 
     
     setLoadingAI(true);
     try {
+      const { GoogleGenAI } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -2078,7 +2078,10 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
         onLogin(await res.json());
       } else {
         const data = await res.json().catch(() => ({ error: 'Invalid username or password' }));
-        const detailedError = data.details ? `${data.error}: ${data.details}` : data.error;
+        let detailedError = data.details ? `${data.error}: ${data.details}` : data.error;
+        if (username === 'admin' && detailedError.includes('Invalid password')) {
+          detailedError += " (Try the default password: admin123)";
+        }
         setError(detailedError || 'Invalid username or password');
       }
     } catch (err) {

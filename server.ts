@@ -122,10 +122,12 @@ async function initializeDatabase() {
         boarder_id INTEGER REFERENCES boarders(id) NULL
       );
 
-      -- Create a default admin user if not exists
+      -- Create or Update default admin user
       INSERT INTO users (username, password, role) 
       VALUES ('admin', 'admin123', 'admin')
-      ON CONFLICT (username) DO NOTHING;
+      ON CONFLICT (username) 
+      DO UPDATE SET password = EXCLUDED.password 
+      WHERE users.username = 'admin';
 
       CREATE TABLE IF NOT EXISTS rentals (
         id SERIAL PRIMARY KEY,
