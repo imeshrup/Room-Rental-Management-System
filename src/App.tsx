@@ -748,7 +748,7 @@ export default function App() {
                   <div className="text-xs text-slate-400">{boarder.emergency_contact_phone}</div>
                 </td>
                 <td className="p-4">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">User: {boarder.name.toLowerCase().replace(/\s+/g, '')}</div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">User: {(boarder.name || '').toLowerCase().replace(/\s+/g, '')}</div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase">Pass: {boarder.contact_number}</div>
                 </td>
                 <td className="p-4">
@@ -1251,7 +1251,7 @@ export default function App() {
                             req.status === 'completed' ? 'bg-emerald-100 text-emerald-600' :
                             req.status === 'in_progress' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
                           }`}>
-                            {req.status.replace('_', ' ')}
+                            {(req.status || '').replace('_', ' ')}
                           </span>
                         </div>
                         <p className="text-sm text-slate-600 mb-6 line-clamp-3">{req.description}</p>
@@ -1650,7 +1650,7 @@ function UserForm({ onSubmit }: { onSubmit: (data: any) => void }) {
           required 
           className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" 
           value={formData.username} 
-          onChange={e => setFormData({...formData, username: e.target.value.toLowerCase().replace(/\s+/g, '')})}
+          onChange={e => setFormData({...formData, username: (e.target.value || '').toLowerCase().replace(/\s+/g, '')})}
           placeholder="e.g. staff_john"
         />
       </div>
@@ -2148,7 +2148,7 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
             </p>
             {dbStatus && dbStatus.database !== 'connected' && (
               <div className="p-2 bg-amber-50 border border-amber-100 rounded-xl text-[9px] text-amber-700 font-bold uppercase tracking-tight">
-                System Warning: Database {dbStatus.database.replace(/_/g, ' ')}
+                System Warning: Database {(dbStatus.database || '').replace(/_/g, ' ')}
                 {dbStatus.databaseError && <div className="mt-1 normal-case font-medium opacity-70">{dbStatus.databaseError}</div>}
               </div>
             )}
