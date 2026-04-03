@@ -2078,7 +2078,8 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
         onLogin(await res.json());
       } else {
         const data = await res.json().catch(() => ({ error: 'Invalid username or password' }));
-        setError(data.error || 'Invalid username or password');
+        const detailedError = data.details ? `${data.error}: ${data.details}` : data.error;
+        setError(detailedError || 'Invalid username or password');
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -2183,13 +2184,21 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
             </p>
             {dbStatus && dbStatus.database !== 'connected' && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-left">
-                <div className="flex items-center gap-2 text-amber-800 font-bold text-[10px] uppercase tracking-wider mb-1">
-                  <AlertTriangle size={14} />
-                  System Warning: Database {(dbStatus.database || '').replace(/_/g, ' ')}
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2 text-amber-800 font-bold text-[10px] uppercase tracking-wider">
+                    <AlertTriangle size={14} />
+                    System Warning: Database {(dbStatus.database || '').replace(/_/g, ' ')}
+                  </div>
+                  {dbStatus.timestamp && (
+                    <span className="text-[8px] text-amber-400 font-mono">
+                      {new Date(dbStatus.timestamp).toLocaleTimeString()}
+                    </span>
+                  )}
                 </div>
                 {dbStatus.hostname && dbStatus.hostname !== 'none' && (
-                  <div className="text-[9px] text-amber-600 font-bold mb-1 opacity-75">
-                    Target: {dbStatus.hostname}
+                  <div className="text-[9px] text-amber-600 font-bold mb-1 opacity-75 flex justify-between">
+                    <span>Target: {dbStatus.hostname}</span>
+                    <span>Init: {dbStatus.serverInitialized ? 'YES' : 'NO'}</span>
                   </div>
                 )}
                 {dbStatus.databaseError && (

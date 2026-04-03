@@ -208,6 +208,7 @@ export const app = express();
 export async function startServer() {
   try {
     await initializeDatabase();
+    (global as any).serverInitialized = true;
   } catch (err) {
     console.error("Database initialization failed:", err instanceof Error ? err.message : err);
     // Continue starting server so Vite can still serve the frontend, 
@@ -261,12 +262,14 @@ export async function startServer() {
 
     res.json({ 
       status: "ok", 
-      database: dbStatus,
+      database: dbStatus || "unknown_empty",
       databaseError: dbError,
       env: process.env.NODE_ENV || "development",
       netlify: !!process.env.NETLIFY,
       hasConfig: hasUrl,
       hostname: hasUrl ? (dbUrl.includes('@') ? dbUrl.split('@')[1].split(':')[0].split('/')[0] : "unknown") : "none",
+      poolInitialized: !!pool,
+      serverInitialized: (global as any).serverInitialized || false,
       timestamp: new Date().toISOString()
     });
   });
@@ -284,7 +287,7 @@ export async function startServer() {
     try {
       console.log("Executing login query...");
       const userRes = await pool.query(
-        "SELECT * FROM users WHERE username = $1 AND password = $2 AND role = $3", 
+        "SELECT id, username, role, boarder_id FROM users WHERE username = $1 AND password = $2 AND role = $3", 
         [username, password, role]
       );
       console.log(`Query completed. Rows found: ${userRes.rows.length}`);
@@ -292,20 +295,25 @@ export async function startServer() {
       if (userRes.rows.length > 0) {
         const user = userRes.rows[0];
         console.log(`Login successful for user: ${username}`);
-        res.json({ 
-          id: user.id, 
-          username: user.username, 
-          role: user.role,
-          boarder_id: user.boarder_id 
-        });
+        res.json(user);
       } else {
         console.log(`Login failed: Invalid credentials for ${username}`);
-        res.status(401).json({ error: "Invalid username, password or role" });
+        // Check if the user exists at all to give a better hint
+        const existsRes = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+        if (existsRes.rows.length === 0) {
+          res.status(401).json({ error: `User '${username}' does not exist in the database.` });
+        } else {
+          res.status(401).json({ error: "Invalid password for this user." });
+        }
       }
     } catch (err) {
       console.error("Login error details:", err);
       const errorMessage = err instanceof Error ? err.message : "Unknown database error";
-      res.status(500).json({ error: `Login failed: ${errorMessage}` });
+      res.status(500).json({ 
+        error: "Database error during login", 
+        details: errorMessage,
+        dbStatus: pool ? "pool_exists" : "no_pool"
+      });
     }
   });
 
