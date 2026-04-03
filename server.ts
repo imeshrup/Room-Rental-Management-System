@@ -9,6 +9,15 @@ const { Pool } = pg;
 let __filename: string = '';
 let __dirname: string = process.cwd();
 
+// Server-side logs for debugging
+let serverLogs: string[] = [];
+const log = (msg: string) => {
+  const entry = `${new Date().toISOString().split('T')[1].split('.')[0]} - ${msg}`;
+  console.log(entry);
+  serverLogs.push(entry);
+  if (serverLogs.length > 30) serverLogs.shift();
+};
+
 try {
   // Check if we are in an ESM environment
   const metaUrl = typeof import.meta !== 'undefined' ? import.meta.url : undefined;
@@ -35,15 +44,15 @@ try {
 let pool: any;
 
 async function initializeDatabase() {
-  console.log("Initializing database connection...");
+  log("Initializing database connection...");
   const dbUrl = process.env.DATABASE_URL;
   
   if (!dbUrl || dbUrl === "base") {
-    console.error("DATABASE_URL is missing or set to 'base'. Please check your Netlify environment variables.");
+    log("ERROR: DATABASE_URL is missing in environment.");
     return;
   }
 
-  console.log(`DATABASE_URL found. Length: ${dbUrl.length}. Starts with: ${dbUrl.substring(0, 10)}...`);
+  log(`Connecting to: ${dbUrl.split('@')[1]?.split(':')[0] || 'unknown host'}`);
   
   let cleanedUrl = dbUrl;
   // Auto-fix: Remove accidental brackets [] around the password if the user copied them from a template
@@ -89,18 +98,18 @@ async function initializeDatabase() {
 
   let client;
   try {
-    console.log("Connecting to database for initialization...");
+    log("Acquiring client from pool...");
     client = await pool.connect();
-    console.log("Successfully connected to PostgreSQL database.");
+    log("Connected to PostgreSQL. Running migrations...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS rooms (
         id SERIAL PRIMARY KEY,
         room_number TEXT UNIQUE,
         floor TEXT,
-        type TEXT, -- 'single' or 'sharing'
+        type TEXT,
         capacity INTEGER,
         price NUMERIC,
-        status TEXT DEFAULT 'available' -- 'available', 'occupied', 'maintenance'
+        status TEXT DEFAULT 'available'
       );
 
       CREATE TABLE IF NOT EXISTS boarders (
@@ -117,18 +126,23 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         username TEXT UNIQUE,
-        password TEXT, -- In a real app, use hashing like bcrypt
-        role TEXT DEFAULT 'admin', -- 'admin', 'boarder', 'staff'
+        password TEXT,
+        role TEXT DEFAULT 'admin',
         boarder_id INTEGER REFERENCES boarders(id) NULL
       );
+    `);
 
-      -- Create or Update default admin user
+    // Force Admin Reset
+    log("Ensuring admin user exists with password 'admin123'...");
+    await client.query(`
       INSERT INTO users (username, password, role) 
       VALUES ('admin', 'admin123', 'admin')
       ON CONFLICT (username) 
       DO UPDATE SET password = EXCLUDED.password 
       WHERE users.username = 'admin';
+    `);
 
+    await client.query(`
       CREATE TABLE IF NOT EXISTS rentals (
         id SERIAL PRIMARY KEY,
         room_id INTEGER REFERENCES rooms(id),
@@ -138,7 +152,7 @@ async function initializeDatabase() {
         advance_amount NUMERIC,
         advance_months INTEGER DEFAULT 1,
         additional_items TEXT,
-        status TEXT DEFAULT 'active' -- 'active', 'completed'
+        status TEXT DEFAULT 'active'
       );
 
       CREATE TABLE IF NOT EXISTS payments (
@@ -146,15 +160,15 @@ async function initializeDatabase() {
         rental_id INTEGER REFERENCES rentals(id),
         amount NUMERIC,
         payment_date TEXT,
-        type TEXT, -- 'rent', 'water', 'electricity', 'advance'
-        month TEXT -- 'YYYY-MM'
+        type TEXT,
+        month TEXT
       );
 
       CREATE TABLE IF NOT EXISTS reminders (
         id SERIAL PRIMARY KEY,
         boarder_id INTEGER REFERENCES boarders(id),
         sent_at TEXT,
-        type TEXT, -- 'manual', 'automated'
+        type TEXT,
         message TEXT
       );
 
@@ -171,11 +185,13 @@ async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         room_id INTEGER NOT NULL REFERENCES rooms(id),
         description TEXT NOT NULL,
-        priority TEXT DEFAULT 'medium', -- 'low', 'medium', 'high'
-        status TEXT DEFAULT 'pending', -- 'pending', 'in_progress', 'completed'
+        priority TEXT DEFAULT 'medium',
+        status TEXT DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    log("Migrations complete.");
 
     // Seed initial rooms if empty
     const roomCountRes = await client.query("SELECT COUNT(*) as count FROM rooms");
@@ -264,6 +280,7 @@ export async function startServer() {
 
     res.json({ 
       status: "ok", 
+      version: "2.1-DEBUG",
       database: dbStatus || "unknown_empty",
       databaseError: dbError,
       env: process.env.NODE_ENV || "development",
@@ -272,6 +289,7 @@ export async function startServer() {
       hostname: hasUrl ? (dbUrl.includes('@') ? dbUrl.split('@')[1].split(':')[0].split('/')[0] : "unknown") : "none",
       poolInitialized: !!pool,
       serverInitialized: (global as any).serverInitialized || false,
+      logs: serverLogs,
       timestamp: new Date().toISOString()
     });
   });
@@ -279,42 +297,36 @@ export async function startServer() {
   // Auth Endpoints
   app.post("/api/login", async (req, res) => {
     const { username, password, role } = req.body;
-    console.log(`Login attempt: username=${username}, role=${role}`);
+    log(`Login attempt: user=${username}, role=${role}`);
     
     if (!pool) {
-      console.error("Database pool is not initialized.");
+      log("ERROR: Pool not initialized during login");
       return res.status(500).json({ error: "Database connection not available" });
     }
 
     try {
-      console.log("Executing login query...");
       const userRes = await pool.query(
         "SELECT id, username, role, boarder_id FROM users WHERE username = $1 AND password = $2 AND role = $3", 
         [username, password, role]
       );
-      console.log(`Query completed. Rows found: ${userRes.rows.length}`);
-
+      
       if (userRes.rows.length > 0) {
-        const user = userRes.rows[0];
-        console.log(`Login successful for user: ${username}`);
-        res.json(user);
+        log(`Login SUCCESS: ${username}`);
+        res.json(userRes.rows[0]);
       } else {
-        console.log(`Login failed: Invalid credentials for ${username}`);
-        // Check if the user exists at all to give a better hint
+        log(`Login FAIL: ${username} (Invalid credentials)`);
         const existsRes = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
         if (existsRes.rows.length === 0) {
-          res.status(401).json({ error: `User '${username}' does not exist in the database.` });
+          res.status(401).json({ error: `User '${username}' does not exist.` });
         } else {
-          res.status(401).json({ error: "Invalid password for this user." });
+          res.status(401).json({ error: "Invalid password." });
         }
       }
     } catch (err) {
-      console.error("Login error details:", err);
-      const errorMessage = err instanceof Error ? err.message : "Unknown database error";
+      log(`Login ERROR: ${err instanceof Error ? err.message : String(err)}`);
       res.status(500).json({ 
-        error: "Database error during login", 
-        details: errorMessage,
-        dbStatus: pool ? "pool_exists" : "no_pool"
+        error: "Database error", 
+        details: err instanceof Error ? err.message : String(err)
       });
     }
   });

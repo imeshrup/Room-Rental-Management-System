@@ -2209,21 +2209,44 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                     {dbStatus.databaseError}
                   </div>
                 )}
-                <button 
-                  type="button"
-                  onClick={() => {
-                    setDbStatus(null);
-                    fetch('/api/health')
-                      .then(res => res.json())
-                      .then(data => setDbStatus(data))
-                      .catch(() => setDbStatus({ database: 'connection_failed', databaseError: 'Could not reach API' }));
-                  }}
-                  className="text-[10px] font-bold text-amber-600 hover:text-amber-800 underline underline-offset-2"
-                >
-                  Retry Connection Check
-                </button>
+                {dbStatus.logs && dbStatus.logs.length > 0 && (
+                  <div className="mt-2 p-2 bg-black/5 rounded-lg font-mono text-[8px] text-amber-900/60 max-h-24 overflow-y-auto mb-2">
+                    {dbStatus.logs.map((log: string, i: number) => (
+                      <div key={i}>{log}</div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between mt-2">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setDbStatus(null);
+                      fetch('/api/health')
+                        .then(res => res.json())
+                        .then(data => setDbStatus(data))
+                        .catch(() => setDbStatus({ database: 'connection_failed', databaseError: 'Could not reach API' }));
+                    }}
+                    className="text-[10px] font-bold text-amber-600 hover:text-amber-800 underline underline-offset-2"
+                  >
+                    Retry Connection Check
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (confirm("This will refresh the page to clear cache. Continue?")) {
+                        window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
+                      }
+                    }}
+                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold underline"
+                  >
+                    Force Clear Cache
+                  </button>
+                </div>
               </div>
             )}
+            <div className="mt-4 flex items-center justify-center gap-2 opacity-30">
+              <span className="text-[8px] text-slate-400 font-mono tracking-widest uppercase">v2.1-DEBUG</span>
+            </div>
           </div>
         </form>
       </motion.div>
