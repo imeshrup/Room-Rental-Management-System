@@ -220,7 +220,10 @@ async function initializeDatabase() {
     (global as any).dbStatus = "connected";
     (global as any).dbError = null;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    let msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("ENOTFOUND") || msg.includes("ETIMEDOUT") || msg.includes("ECONNREFUSED")) {
+      msg += " (DNS/Network error. TIP: Use the Supabase 'Transaction Pooler' connection string on port 6543 for serverless/Netlify.)";
+    }
     log(`FATAL DB ERROR: ${msg}`);
     (global as any).dbStatus = "error";
     (global as any).dbError = msg;
@@ -297,8 +300,8 @@ export async function startServer() {
       console.error("Health check DB error:", e);
       
       // Add more context if it's a common Supabase error
-      if (dbError.includes("ECONNREFUSED") || dbError.includes("ETIMEDOUT")) {
-        dbError += " (Possible network issue or wrong port. Ensure you use the Supabase Pooler connection string on port 6543 for serverless functions.)";
+      if (dbError.includes("ECONNREFUSED") || dbError.includes("ETIMEDOUT") || dbError.includes("ENOTFOUND")) {
+        dbError += " (Possible DNS or network issue. IMPORTANT: For Netlify/Serverless, you MUST use the Supabase 'Transaction Pooler' connection string on port 6543, NOT the direct connection string on port 5432. Check your Supabase dashboard settings.)";
       }
     }
 
