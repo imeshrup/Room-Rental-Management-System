@@ -35,10 +35,17 @@ async function initializeDatabase() {
     
     // Auto-detect if SSL should be used (most cloud providers require it)
     const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-    const useSSL = !isLocalhost || process.env.NODE_ENV === "production" || url.hostname.includes('supabase') || url.hostname.includes('elephantsql') || url.hostname.includes('render');
+    const isSupabase = url.hostname.includes('supabase');
+    const useSSL = !isLocalhost || process.env.NODE_ENV === "production" || isSupabase || url.hostname.includes('elephantsql') || url.hostname.includes('render');
     
     console.log(`Database SSL mode: ${useSSL ? 'Enabled (rejectUnauthorized: false)' : 'Disabled'}`);
     
+    // For Supabase, ensure we use the right port if possible, but don't force it
+    // Supabase Pooler is typically 6543, direct is 5432
+    if (isSupabase && url.port === '5432') {
+      console.log("Note: Supabase direct connection (5432) detected. If this fails, try the Pooler connection (6543).");
+    }
+
     pool = new Pool({
       connectionString: cleanedUrl,
       ssl: useSSL ? { rejectUnauthorized: false } : false,
@@ -48,9 +55,11 @@ async function initializeDatabase() {
     });
   } catch (e) {
     console.error("DATABASE_URL is not a valid URL format. Using raw string fallback.");
+    // Fallback to a simpler pool config if URL parsing fails
+    const useSSL = process.env.NODE_ENV === "production" || !cleanedUrl.includes('localhost');
     pool = new Pool({
       connectionString: cleanedUrl,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+      ssl: useSSL ? { rejectUnauthorized: false } : false,
       connectionTimeoutMillis: 15000,
     });
   }
@@ -209,7 +218,8 @@ export async function startServer() {
         dbStatus = "missing_config";
         dbError = "DATABASE_URL environment variable is not set in Netlify dashboard.";
       } else if (pool) {
-        const result = await pool.query("SELECT NOW()");
+        // Try a very quick query to check connection
+        const result = await pool.query("SELECT 1");
         dbStatus = "connected";
       } else {
         dbStatus = "pool_not_initialized";
@@ -219,6 +229,11 @@ export async function startServer() {
       dbStatus = "connection_failed";
       dbError = e instanceof Error ? e.message : String(e);
       console.error("Health check DB error:", e);
+      
+      // Add more context if it's a common Supabase error
+      if (dbError.includes("ECONNREFUSED") || dbError.includes("ETIMEDOUT")) {
+        dbError += " (Possible network issue or wrong port. Ensure you use the Supabase Pooler connection string on port 6543 for serverless functions.)";
+      }
     }
 
     res.json({ 
@@ -228,7 +243,7 @@ export async function startServer() {
       env: process.env.NODE_ENV || "development",
       netlify: !!process.env.NETLIFY,
       hasConfig: hasUrl,
-      urlPreview: hasUrl ? `${dbUrl?.split('@')[1]?.split('/')[0]}` : "none",
+      hostname: hasUrl ? (dbUrl.includes('@') ? dbUrl.split('@')[1].split(':')[0].split('/')[0] : "unknown") : "none",
       timestamp: new Date().toISOString()
     });
   });

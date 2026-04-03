@@ -28,9 +28,11 @@ import {
   Eye,
   EyeOff,
   Settings,
-  User as UserIcon
+  User as UserIcon,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleGenAI } from "@google/genai";
 
 // Types
 interface Room {
@@ -1690,6 +1692,28 @@ function MaintenanceForm({ rooms, onSubmit }: { rooms: Room[], onSubmit: (data: 
     description: '',
     priority: 'medium'
   });
+  const [loadingAI, setLoadingAI] = useState(false);
+
+  const handleAIHelp = async () => {
+    if (!formData.description || formData.description.length < 5) return;
+    
+    setLoadingAI(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Expand this short maintenance request into a professional and detailed description for a boarding house manager. Original request: "${formData.description}". Keep it concise but clear.`,
+      });
+      
+      if (response.text) {
+        setFormData({ ...formData, description: response.text.trim() });
+      }
+    } catch (error) {
+      console.error("AI Assistant Error:", error);
+    } finally {
+      setLoadingAI(false);
+    }
+  };
 
   return (
     <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }}>
@@ -1709,8 +1733,19 @@ function MaintenanceForm({ rooms, onSubmit }: { rooms: Room[], onSubmit: (data: 
         </select>
       </div>
       <div>
-        <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Description</label>
-        <textarea required placeholder="Describe the issue..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm h-32" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+        <div className="flex justify-between items-center mb-1">
+          <label className="block text-xs font-bold text-slate-400 uppercase">Description</label>
+          <button 
+            type="button"
+            onClick={handleAIHelp}
+            disabled={loadingAI || !formData.description || formData.description.length < 5}
+            className="flex items-center gap-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50 transition-colors"
+          >
+            <Sparkles size={12} className={loadingAI ? "animate-pulse" : ""} />
+            {loadingAI ? "AI is thinking..." : "AI: Help me describe"}
+          </button>
+        </div>
+        <textarea required placeholder="Describe the issue (e.g., 'tap is leaking')..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm h-32" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
       </div>
       <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">
         Submit Request
@@ -2152,6 +2187,11 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                   <AlertTriangle size={14} />
                   System Warning: Database {(dbStatus.database || '').replace(/_/g, ' ')}
                 </div>
+                {dbStatus.hostname && dbStatus.hostname !== 'none' && (
+                  <div className="text-[9px] text-amber-600 font-bold mb-1 opacity-75">
+                    Target: {dbStatus.hostname}
+                  </div>
+                )}
                 {dbStatus.databaseError && (
                   <div className="text-[11px] text-amber-700 font-medium leading-relaxed mb-2">
                     {dbStatus.databaseError}
