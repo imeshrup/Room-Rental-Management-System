@@ -11,20 +11,13 @@ const __dirname = path.dirname(__filename);
 
 // PostgreSQL Connection Pool
 let pool: any;
-try {
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
-  });
-} catch (e) {
-  console.error("Initial Pool creation failed:", e);
-}
 
 async function initializeDatabase() {
   let dbUrl = process.env.DATABASE_URL;
   
   if (!dbUrl || dbUrl === "base") {
-    throw new Error("DATABASE_URL environment variable is missing or set to a placeholder. Please add your actual Supabase connection string in Settings.");
+    console.error("DATABASE_URL is missing or placeholder.");
+    return; // Don't throw, let the health check report it
   }
 
   // Auto-fix: Remove accidental brackets [] around the password if the user copied them from a template
@@ -33,14 +26,13 @@ async function initializeDatabase() {
     dbUrl = dbUrl.replace(":[", ":").replace("]@", "@");
   }
 
-  // Debug: Log the hostname (masked) to help troubleshoot DNS issues
   try {
     const url = new URL(dbUrl);
     console.log(`Attempting to connect to database at: ${url.hostname}`);
     
     // Auto-detect if SSL should be used (most cloud providers require it)
     const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-    const useSSL = !isLocalhost || process.env.NODE_ENV === "production";
+    const useSSL = !isLocalhost || process.env.NODE_ENV === "production" || url.hostname.includes('supabase') || url.hostname.includes('elephantsql') || url.hostname.includes('render');
     
     console.log(`Database SSL mode: ${useSSL ? 'Enabled (rejectUnauthorized: false)' : 'Disabled'}`);
     
@@ -48,21 +40,22 @@ async function initializeDatabase() {
     pool = new Pool({
       connectionString: dbUrl,
       ssl: useSSL ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 10000, // 10 seconds timeout
+      connectionTimeoutMillis: 15000, // 15 seconds timeout for serverless
+      idleTimeoutMillis: 30000,
+      max: 10
     });
   } catch (e) {
-    console.error("DATABASE_URL is not a valid URL format.");
-    // Fallback pool creation if URL parsing fails (might still work if it's a valid pg string)
+    console.error("DATABASE_URL is not a valid URL format, using raw string.");
     pool = new Pool({
       connectionString: dbUrl,
       ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: 15000,
     });
   }
 
   let client;
   try {
-    console.log("Connecting to database...");
+    console.log("Connecting to database for initialization...");
     client = await pool.connect();
     console.log("Successfully connected to PostgreSQL database.");
     await client.query(`
@@ -203,11 +196,29 @@ export async function startServer() {
   const PORT = 3000;
 
   // Health check route
-  app.get("/api/health", (req, res) => {
+  app.get("/api/health", async (req, res) => {
+    let dbStatus = "unknown";
+    let dbError = null;
+    try {
+      if (pool) {
+        const result = await pool.query("SELECT NOW()");
+        dbStatus = "connected";
+      } else {
+        dbStatus = "pool_not_initialized";
+      }
+    } catch (e) {
+      dbStatus = "connection_failed";
+      dbError = e instanceof Error ? e.message : String(e);
+      console.error("Health check DB error:", e);
+    }
+
     res.json({ 
       status: "ok", 
-      database: process.env.DATABASE_URL ? "configured" : "missing",
-      env: process.env.NODE_ENV || "development"
+      database: dbStatus,
+      databaseError: dbError,
+      env: process.env.NODE_ENV || "development",
+      netlify: !!process.env.NETLIFY,
+      timestamp: new Date().toISOString()
     });
   });
 
@@ -244,7 +255,8 @@ export async function startServer() {
       }
     } catch (err) {
       console.error("Login error details:", err);
-      res.status(500).json({ error: "Login failed due to server error" });
+      const errorMessage = err instanceof Error ? err.message : "Unknown database error";
+      res.status(500).json({ error: `Login failed: ${errorMessage}` });
     }
   });
 

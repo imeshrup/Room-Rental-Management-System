@@ -2020,6 +2020,14 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [role, setRole] = useState('admin');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{ database: string; databaseError?: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => setDbStatus(data))
+      .catch(() => setDbStatus({ database: 'connection_failed', databaseError: 'Could not reach API' }));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2034,7 +2042,8 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
       if (res.ok) {
         onLogin(await res.json());
       } else {
-        setError('Invalid username or password');
+        const data = await res.json().catch(() => ({ error: 'Invalid username or password' }));
+        setError(data.error || 'Invalid username or password');
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -2131,12 +2140,18 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
             {loading ? 'Authenticating...' : 'Sign In Now'}
           </button>
 
-          <div className="text-center">
+          <div className="text-center space-y-2">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
               {role === 'boarder' ? 'Tip: Use your name (no spaces) and phone number' : 
                role === 'staff' ? 'Contact admin for your staff credentials' :
                'Administrator access required'}
             </p>
+            {dbStatus && dbStatus.database !== 'connected' && (
+              <div className="p-2 bg-amber-50 border border-amber-100 rounded-xl text-[9px] text-amber-700 font-bold uppercase tracking-tight">
+                System Warning: Database {dbStatus.database.replace(/_/g, ' ')}
+                {dbStatus.databaseError && <div className="mt-1 normal-case font-medium opacity-70">{dbStatus.databaseError}</div>}
+              </div>
+            )}
           </div>
         </form>
       </motion.div>
