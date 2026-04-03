@@ -2,6 +2,7 @@ import express from "express";
 import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
+import serverless from "serverless-http";
 
 const { Pool } = pg;
 
@@ -17,6 +18,8 @@ const log = (msg: string) => {
   serverLogs.push(entry);
   if (serverLogs.length > 30) serverLogs.shift();
 };
+
+const PORT = 3000;
 
 try {
   // Check if we are in an ESM environment
@@ -230,6 +233,9 @@ async function initializeDatabase() {
 export const app = express();
 
 export async function startServer() {
+  if ((global as any).routesRegistered) return;
+  (global as any).routesRegistered = true;
+
   try {
     await initializeDatabase();
     (global as any).serverInitialized = true;
@@ -252,7 +258,19 @@ export async function startServer() {
   };
 
   app.use(express.json());
-  const PORT = 3000;
+  
+  // Lazy initialization for serverless environments
+  app.use(async (req, res, next) => {
+    if (!(global as any).serverInitialized && process.env.DATABASE_URL) {
+      try {
+        await initializeDatabase();
+        (global as any).serverInitialized = true;
+      } catch (err) {
+        log(`Lazy init error: ${err}`);
+      }
+    }
+    next();
+  });
 
   // Health check route
   app.get("/api/health", async (req, res) => {
@@ -801,14 +819,16 @@ export async function startServer() {
       res.sendFile(path.join(__dirname, "dist", "index.html"));
     });
   }
+}
 
-  if (!process.env.NETLIFY) {
+// Export handler for Netlify
+const handler = serverless(app);
+export { handler };
+
+if (!process.env.NETLIFY && !process.env.LAMBDA_TASK_ROOT) {
+  startServer().then(() => {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
-  }
-}
-
-if (!process.env.NETLIFY) {
-  startServer();
+  });
 }
