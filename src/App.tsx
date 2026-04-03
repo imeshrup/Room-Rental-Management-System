@@ -2147,9 +2147,29 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                'Administrator access required'}
             </p>
             {dbStatus && dbStatus.database !== 'connected' && (
-              <div className="p-2 bg-amber-50 border border-amber-100 rounded-xl text-[9px] text-amber-700 font-bold uppercase tracking-tight">
-                System Warning: Database {(dbStatus.database || '').replace(/_/g, ' ')}
-                {dbStatus.databaseError && <div className="mt-1 normal-case font-medium opacity-70">{dbStatus.databaseError}</div>}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-left">
+                <div className="flex items-center gap-2 text-amber-800 font-bold text-[10px] uppercase tracking-wider mb-1">
+                  <AlertTriangle size={14} />
+                  System Warning: Database {(dbStatus.database || '').replace(/_/g, ' ')}
+                </div>
+                {dbStatus.databaseError && (
+                  <div className="text-[11px] text-amber-700 font-medium leading-relaxed mb-2">
+                    {dbStatus.databaseError}
+                  </div>
+                )}
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setDbStatus(null);
+                    fetch('/api/health')
+                      .then(res => res.json())
+                      .then(data => setDbStatus(data))
+                      .catch(() => setDbStatus({ database: 'connection_failed', databaseError: 'Could not reach API' }));
+                  }}
+                  className="text-[10px] font-bold text-amber-600 hover:text-amber-800 underline underline-offset-2"
+                >
+                  Retry Connection Check
+                </button>
               </div>
             )}
           </div>

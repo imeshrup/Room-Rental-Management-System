@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -199,12 +198,19 @@ export async function startServer() {
   app.get("/api/health", async (req, res) => {
     let dbStatus = "unknown";
     let dbError = null;
+    const dbUrl = process.env.DATABASE_URL;
+    const hasUrl = !!dbUrl && dbUrl !== "base";
+    
     try {
-      if (pool) {
+      if (!hasUrl) {
+        dbStatus = "missing_config";
+        dbError = "DATABASE_URL environment variable is not set in Netlify dashboard.";
+      } else if (pool) {
         const result = await pool.query("SELECT NOW()");
         dbStatus = "connected";
       } else {
         dbStatus = "pool_not_initialized";
+        dbError = "Database pool failed to initialize. Check server logs.";
       }
     } catch (e) {
       dbStatus = "connection_failed";
@@ -218,6 +224,8 @@ export async function startServer() {
       databaseError: dbError,
       env: process.env.NODE_ENV || "development",
       netlify: !!process.env.NETLIFY,
+      hasConfig: hasUrl,
+      urlPreview: hasUrl ? `${dbUrl?.split('@')[1]?.split('/')[0]}` : "none",
       timestamp: new Date().toISOString()
     });
   });
@@ -693,6 +701,7 @@ export async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
