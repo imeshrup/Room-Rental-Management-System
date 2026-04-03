@@ -5,8 +5,31 @@ import { fileURLToPath } from "url";
 
 const { Pool } = pg;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ESM and CJS compatibility for __dirname and __filename
+let __filename: string = '';
+let __dirname: string = process.cwd();
+
+try {
+  // Check if we are in an ESM environment
+  const metaUrl = typeof import.meta !== 'undefined' ? import.meta.url : undefined;
+  
+  if (metaUrl) {
+    __filename = fileURLToPath(metaUrl);
+    __dirname = path.dirname(__filename);
+  } else {
+    // Fallback to CJS globals if available
+    // Note: In some environments, __filename and __dirname are available directly
+    if (typeof (global as any).__filename !== 'undefined') {
+      __filename = (global as any).__filename;
+    }
+    if (typeof (global as any).__dirname !== 'undefined') {
+      __dirname = (global as any).__dirname;
+    }
+  }
+} catch (e) {
+  // Final fallback to process.cwd()
+  console.warn("Path resolution fallback to process.cwd()");
+}
 
 // PostgreSQL Connection Pool
 let pool: any;
